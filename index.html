@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>BHB — Traçabilité</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#16130F">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <div class="offline-badge" id="offline-badge">Hors ligne</div>
+
+  <header class="top">
+    <div class="eyebrow">Traçabilité BHB</div>
+    <h1 id="header-title">Commande</h1>
+    <div class="sub" id="header-sub">Beignet · Bouillie · Haricot</div>
+  </header>
+
+  <main>
+
+    <!-- ÉCRAN COMMANDE -->
+    <section class="screen active" id="screen-commande">
+      <div class="section-title">Produits</div>
+      <div class="prod-grid" id="prod-grid"></div>
+      <button class="add-product-btn" onclick="openModal('modal-produit')">+ Ajouter un nouveau produit</button>
+
+      <div class="ticket" id="ticket">
+        <h3>Ticket en cours</h3>
+        <div id="ticket-lines"><div class="empty">Aucun article sélectionné</div></div>
+        <div class="total"><span>Total</span><span id="ticket-total">0 FCFA</span></div>
+      </div>
+      <button class="btn-primary" id="btn-valider" disabled onclick="validerCommande()">Valider la commande</button>
+    </section>
+
+    <!-- ÉCRAN DÉPENSES -->
+    <section class="screen" id="screen-depenses">
+      <div class="section-title">Nouvelle dépense</div>
+      <div class="field">
+        <label>Libellé</label>
+        <input type="text" id="dep-libelle" placeholder="ex: huile, sel, riz...">
+      </div>
+      <div class="field">
+        <label>Montant (FCFA)</label>
+        <input type="number" id="dep-montant" placeholder="ex: 2000">
+      </div>
+      <div class="field">
+        <label>Produit(s) concerné(s) — obligatoire</label>
+        <div class="checkbox-row" id="dep-produits-chips"></div>
+      </div>
+      <button class="btn-primary" onclick="ajouterDepense()">Enregistrer la dépense</button>
+
+      <div class="section-title">Dépenses récentes</div>
+      <div id="depenses-list"></div>
+    </section>
+
+    <!-- ÉCRAN CHARGES -->
+    <section class="screen" id="screen-charges">
+      <div class="section-title">Nouvelle charge</div>
+      <div class="field">
+        <label>Type</label>
+        <select id="charge-type">
+          <option value="Loyer">Loyer</option>
+          <option value="Électricité">Électricité</option>
+          <option value="Salaire">Salaire</option>
+          <option value="Épargne">Épargne</option>
+          <option value="Imprévu">Imprévu</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Montant (FCFA)</label>
+        <input type="number" id="charge-montant" placeholder="ex: 25000">
+      </div>
+      <button class="btn-primary" onclick="ajouterCharge()">Enregistrer la charge</button>
+
+      <div class="section-title">Charges du mois</div>
+      <div id="charges-list"></div>
+    </section>
+
+    <!-- ÉCRAN TABLEAU DE BORD -->
+    <section class="screen" id="screen-dashboard">
+      <div class="period-tabs" id="period-tabs">
+        <button class="period-tab active" data-period="jour" onclick="setPeriod('jour')">Jour</button>
+        <button class="period-tab" data-period="semaine" onclick="setPeriod('semaine')">Semaine</button>
+        <button class="period-tab" data-period="mois" onclick="setPeriod('mois')">Mois</button>
+      </div>
+      <div class="period-range" id="period-range">Aujourd'hui</div>
+
+      <div class="kpi hero" style="margin-bottom:14px;">
+        <div class="label">Bénéfice net</div>
+        <div class="value" id="kpi-benefice">0 FCFA</div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="label">Chiffre d'affaires</div>
+          <div class="value" id="kpi-ca" style="font-size:18px;">0</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Coût ingrédients</div>
+          <div class="value" id="kpi-cout" style="font-size:18px; color:var(--chili);">0</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Marge brute</div>
+          <div class="value" id="kpi-marge" style="font-size:18px;">0</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Charges fixes</div>
+          <div class="value" id="kpi-charges" style="font-size:18px; color:var(--chili);">0</div>
+        </div>
+      </div>
+
+      <div class="section-title">Marge par produit</div>
+      <div id="marge-bars"></div>
+
+      <div class="epargne-note" id="epargne-note">Épargne à provisionner : 0 FCFA — non déduite du bénéfice.</div>
+    </section>
+
+    <!-- ÉCRAN BILANS MENSUELS -->
+    <section class="screen" id="screen-bilans">
+      <div class="section-title">Clôture du mois</div>
+      <div class="cloture-box">
+        <div class="cloture-text">
+          Le 1er de chaque mois, le système clôture automatiquement le mois précédent.
+          Si le téléphone est éteint à ce moment, la clôture est rattrapée au prochain démarrage de l'app.
+        </div>
+        <button class="btn-primary" onclick="clotureManuelle()">Clôturer maintenant</button>
+      </div>
+
+      <div class="section-title">Historique des bilans</div>
+      <div id="bilans-list"></div>
+    </section>
+
+  </main>
+
+  <nav class="bottom">
+    <button class="active" data-screen="commande" onclick="switchScreen('commande')"><span class="icon">🧾</span>Commande</button>
+    <button data-screen="depenses" onclick="switchScreen('depenses')"><span class="icon">💸</span>Dépenses</button>
+    <button data-screen="charges" onclick="switchScreen('charges')"><span class="icon">🏠</span>Charges</button>
+    <button data-screen="dashboard" onclick="switchScreen('dashboard')"><span class="icon">📊</span>Tableau</button>
+    <button data-screen="bilans" onclick="switchScreen('bilans')"><span class="icon">📁</span>Bilans</button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- MODAL AJOUT PRODUIT -->
+  <div class="modal-overlay" id="modal-produit">
+    <div class="modal">
+      <h3>Nouveau produit</h3>
+      <div class="field">
+        <label>Nom</label>
+        <input type="text" id="new-prod-nom" placeholder="ex: Ailes de poulet">
+      </div>
+      <div class="field">
+        <label>Catégorie</label>
+        <input type="text" id="new-prod-cat" placeholder="ex: grillade">
+      </div>
+      <div class="field">
+        <label>Prix de vente (FCFA)</label>
+        <input type="number" id="new-prod-prix" placeholder="ex: 500">
+      </div>
+      <button class="btn-primary" onclick="ajouterProduit()">Ajouter au menu</button>
+      <button class="btn-secondary" onclick="closeModal('modal-produit')">Annuler</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="idb.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
