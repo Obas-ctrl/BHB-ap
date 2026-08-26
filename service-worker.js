@@ -1,7 +1,7 @@
 // Service worker BHB — cache-first pour les fichiers de l'app,
 // pour que tout fonctionne même sans connexion.
 
-const CACHE_NAME = 'bhb-cache-v1';
+const CACHE_NAME = 'bhb-cache-v2';
 const FICHIERS_A_CACHER = [
   './',
   './index.html',
