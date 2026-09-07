@@ -29,6 +29,14 @@ main{flex:1; padding:16px;}
 .section-title:first-child{margin-top:0;}
 
 .prod-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+.client-tabs{display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;}
+.client-chip{padding:8px 12px; border-radius:20px; border:1px solid var(--border); background:var(--surface); font-size:12px; cursor:pointer; color:var(--muted); display:flex; align-items:center; gap:6px;}
+.client-chip.active{background:var(--gold); color:var(--bg); border-color:var(--gold); font-weight:600;}
+.client-chip .remove-x{font-size:11px; opacity:0.7;}
+.client-chip.add-chip{border-style:dashed; color:var(--muted);}
+.ticket .client-groupe{margin-bottom:8px; padding-bottom:8px; border-bottom:1px dashed var(--border);}
+.ticket .client-groupe:last-of-type{border-bottom:none;}
+.ticket .client-nom{font-size:10px; text-transform:uppercase; letter-spacing:0.5px; color:var(--gold); margin-bottom:4px; font-family:'Inter',sans-serif; font-weight:600;}
 .prod-card{background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 12px; display:flex; flex-direction:column; gap:8px;}
 .prod-card .name{font-weight:600; font-size:14px;}
 .prod-card .cat{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px;}
@@ -107,8 +115,8 @@ main{flex:1; padding:16px;}
 .bilan-card .bilan-benefice{color:var(--gold); font-weight:700; font-size:15px; margin-top:8px; padding-top:8px; border-top:1px dashed var(--border);}
 
 nav.bottom{position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; background:var(--surface); border-top:1px solid var(--border); display:flex; z-index:20;}
-nav.bottom button{flex:1; background:none; border:none; padding:12px 2px 10px; color:var(--muted); font-family:'Inter',sans-serif; font-size:9px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px; text-transform:uppercase; letter-spacing:0.3px;}
-nav.bottom button .icon{font-size:17px;}
+nav.bottom button{flex:1; background:none; border:none; padding:10px 1px 8px; color:var(--muted); font-family:'Inter',sans-serif; font-size:8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px; text-transform:uppercase; letter-spacing:0.2px;}
+nav.bottom button .icon{font-size:15px;}
 nav.bottom button.active{color:var(--gold);}
 
 .toast{position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:var(--gold); color:var(--bg); padding:10px 18px; border-radius:8px; font-size:13px; font-weight:600; opacity:0; pointer-events:none; transition:opacity .25s ease, transform .25s ease; z-index:30; white-space:nowrap;}

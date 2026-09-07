@@ -28,6 +28,7 @@
 
     <!-- ÉCRAN COMMANDE -->
     <section class="screen active" id="screen-commande">
+      <div class="client-tabs" id="client-tabs"></div>
       <div class="section-title">Produits</div>
       <div class="prod-grid" id="prod-grid"></div>
       <button class="add-product-btn" onclick="openModal('modal-produit')">+ Ajouter un nouveau produit</button>
@@ -63,23 +64,7 @@
 
     <!-- ÉCRAN CHARGES -->
     <section class="screen" id="screen-charges">
-      <div class="section-title">Nouvelle charge</div>
-      <div class="field">
-        <label>Type</label>
-        <select id="charge-type">
-          <option value="Loyer">Loyer</option>
-          <option value="Électricité">Électricité</option>
-          <option value="Salaire">Salaire</option>
-          <option value="Investissement">Investissement (matériel)</option>
-          <option value="Épargne">Épargne</option>
-          <option value="Imprévu">Imprévu</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Montant (FCFA)</label>
-        <input type="number" id="charge-montant" placeholder="ex: 25000">
-      </div>
-      <button class="btn-primary" onclick="ajouterCharge()">Enregistrer la charge</button>
+      <button class="btn-primary" onclick="openModal('modal-charge')">+ Nouvel achat</button>
 
       <div class="section-title">Charges du mois</div>
       <div id="charges-list"></div>
@@ -125,17 +110,36 @@
 
     <!-- ÉCRAN BILANS MENSUELS -->
     <section class="screen" id="screen-bilans">
-      <div class="section-title">Clôture du mois</div>
+      <div class="section-title">Clôtures</div>
       <div class="cloture-box">
         <div class="cloture-text">
-          Le 1er de chaque mois, le système clôture automatiquement le mois précédent.
-          Si le téléphone est éteint à ce moment, la clôture est rattrapée au prochain démarrage de l'app.
+          Chaque niveau se clôture automatiquement (jour à minuit, semaine le dimanche, mois le 1er).
+          Si le téléphone est éteint à ce moment, c'est rattrapé au prochain démarrage.
+          Tu peux aussi clôturer manuellement ici.
         </div>
-        <button class="btn-primary" onclick="clotureManuelle()">Clôturer maintenant</button>
+        <button class="btn-primary" onclick="clotureManuelle('jour')">Clôturer la journée</button>
+        <button class="btn-secondary" onclick="clotureManuelle('semaine')">Clôturer la semaine</button>
+        <button class="btn-secondary" onclick="clotureManuelle('mois')">Clôturer le mois</button>
       </div>
 
       <div class="section-title">Historique des bilans</div>
+      <div class="period-tabs" id="bilan-type-tabs">
+        <button class="period-tab active" data-type="jour" onclick="setBilanType('jour')">Jour</button>
+        <button class="period-tab" data-type="semaine" onclick="setBilanType('semaine')">Semaine</button>
+        <button class="period-tab" data-type="mois" onclick="setBilanType('mois')">Mois</button>
+      </div>
       <div id="bilans-list"></div>
+    </section>
+
+    <!-- ÉCRAN FACTURES -->
+    <section class="screen" id="screen-factures">
+      <div class="period-tabs" id="facture-period-tabs">
+        <button class="period-tab active" data-period="jour" onclick="setFacturePeriod('jour')">Jour</button>
+        <button class="period-tab" data-period="semaine" onclick="setFacturePeriod('semaine')">Semaine</button>
+        <button class="period-tab" data-period="mois" onclick="setFacturePeriod('mois')">Mois</button>
+      </div>
+      <div class="period-range" id="facture-period-range">Aujourd'hui</div>
+      <div id="factures-list"></div>
     </section>
 
   </main>
@@ -146,6 +150,7 @@
     <button data-screen="charges" onclick="switchScreen('charges')"><span class="icon">🏠</span>Charges</button>
     <button data-screen="dashboard" onclick="switchScreen('dashboard')"><span class="icon">📊</span>Tableau</button>
     <button data-screen="bilans" onclick="switchScreen('bilans')"><span class="icon">📁</span>Bilans</button>
+    <button data-screen="factures" onclick="switchScreen('factures')"><span class="icon">🧾</span>Factures</button>
   </nav>
 
   <div class="toast" id="toast"></div>
@@ -168,6 +173,34 @@
       </div>
       <button class="btn-primary" onclick="ajouterProduit()">Ajouter au menu</button>
       <button class="btn-secondary" onclick="closeModal('modal-produit')">Annuler</button>
+    </div>
+  </div>
+
+  <!-- MODAL NOUVEL ACHAT (charge) -->
+  <div class="modal-overlay" id="modal-charge">
+    <div class="modal">
+      <h3>Nouvel achat</h3>
+      <div class="field">
+        <label>Libellé</label>
+        <input type="text" id="charge-libelle" placeholder="ex: 2 tables, réparation bidon...">
+      </div>
+      <div class="field">
+        <label>Type</label>
+        <select id="charge-type">
+          <option value="Investissement">Investissement (matériel)</option>
+          <option value="Loyer">Loyer</option>
+          <option value="Électricité">Électricité</option>
+          <option value="Salaire">Salaire</option>
+          <option value="Épargne">Épargne</option>
+          <option value="Imprévu">Imprévu</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Montant (FCFA)</label>
+        <input type="number" id="charge-montant" placeholder="ex: 25000">
+      </div>
+      <button class="btn-primary" onclick="ajouterCharge()">Enregistrer l'achat</button>
+      <button class="btn-secondary" onclick="closeModal('modal-charge')">Annuler</button>
     </div>
   </div>
 

@@ -6,18 +6,26 @@
 let produits = [];
 let depenses = [];
 let charges = [];
-let commandesValidees = []; // lignes de vente, une par produit vendu
-let bilansMensuels = [];
-let ticket = {}; // { produitId: montant } — pas encore persistée (panier en cours)
-let periodeActuelle = 'jour';
+let commandesValidees = []; // lignes de vente : {id, factureId, clientNom, produitId, montant, date, periode_cloturee}
+let bilansMensuels = [];    // bilans de tous types : {id, type:'jour'|'semaine'|'mois', libelle, ca, cout, marge, charges, benefice, genere_en_retard, date_generation}
+let periodeActuelle = 'jour';    // pour Tableau de bord
+let periodeFactures = 'jour';    // pour l'écran Factures
+let bilanTypeAffiche = 'jour';   // filtre d'affichage de l'historique des bilans
 let depProduitsSelectionnes = [];
+
+// État du ticket en cours : plusieurs "clients" possibles sur une même facture
+let ticket = {
+  clients: [{ id: 'c1', nom: 'Client 1', items: {} }],
+  activeClientId: 'c1',
+};
 
 const headerTitles = {
   commande: ['Commande', 'Beignet · Bouillie · Haricot'],
   depenses: ['Dépenses', 'Tout ce qui a été acheté'],
   charges: ['Charges', 'Loyer, salaire, imprévu, épargne'],
   dashboard: ['Tableau de bord', 'Bénéfice calculé en temps réel'],
-  bilans: ['Bilans mensuels', 'Clôtures figées, mois par mois'],
+  bilans: ['Bilans', 'Clôtures jour, semaine, mois'],
+  factures: ['Factures', "L'historique de chaque vente"],
 };
 
 // ---------------- INITIALISATION ----------------
@@ -37,9 +45,10 @@ async function init() {
   commandesValidees = await dbGetAll('commandes');
   bilansMensuels = await dbGetAll('bilans_mensuels');
 
+  renderClientTabs();
   renderProdGrid();
   renderTicket();
-  verifierRattrapageCloture();
+  await verifierRattrapageCloture();
   registrerServiceWorker();
   surveillerConnexion();
 }
@@ -56,6 +65,7 @@ function switchScreen(name) {
   if (name === 'charges') renderChargesList();
   if (name === 'dashboard') renderDashboard();
   if (name === 'bilans') renderBilansScreen();
+  if (name === 'factures') renderFacturesScreen();
 }
 
 function openModal(id) { document.getElementById(id).classList.add('show'); }
@@ -68,12 +78,51 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 1600);
 }
 
-// ---------------- ÉCRAN COMMANDE ----------------
+// ---------------- ÉCRAN COMMANDE : GESTION MULTI-CLIENTS ----------------
+function renderClientTabs() {
+  const zone = document.getElementById('client-tabs');
+  zone.innerHTML = ticket.clients.map((c) => `
+    <div class="client-chip ${c.id === ticket.activeClientId ? 'active' : ''}" onclick="setActiveClient('${c.id}')">
+      ${c.nom}
+      ${ticket.clients.length > 1 ? `<span class="remove-x" onclick="event.stopPropagation(); retirerClient('${c.id}')">✕</span>` : ''}
+    </div>
+  `).join('') + `<div class="client-chip add-chip" onclick="ajouterClient()">+ Client</div>`;
+}
+
+function setActiveClient(id) {
+  ticket.activeClientId = id;
+  renderClientTabs();
+  renderProdGrid();
+}
+
+function ajouterClient() {
+  const n = ticket.clients.length + 1;
+  const nouveau = { id: 'c' + Date.now(), nom: 'Client ' + n, items: {} };
+  ticket.clients.push(nouveau);
+  ticket.activeClientId = nouveau.id;
+  renderClientTabs();
+  renderProdGrid();
+}
+
+function retirerClient(id) {
+  ticket.clients = ticket.clients.filter((c) => c.id !== id);
+  if (ticket.activeClientId === id) ticket.activeClientId = ticket.clients[0].id;
+  renderClientTabs();
+  renderProdGrid();
+  renderTicket();
+}
+
+function clientActif() {
+  return ticket.clients.find((c) => c.id === ticket.activeClientId);
+}
+
+// ---------------- ÉCRAN COMMANDE : PRODUITS ----------------
 function renderProdGrid() {
   const grid = document.getElementById('prod-grid');
+  const client = clientActif();
   grid.innerHTML = '';
   produits.forEach((p) => {
-    const montant = ticket[p.id] || '';
+    const montant = client.items[p.id] || '';
     const qteApprox = montant ? (montant / p.prix).toFixed(1) : null;
     const card = document.createElement('div');
     card.className = 'prod-card';
@@ -93,51 +142,76 @@ function renderProdGrid() {
 
 function setMontant(id, value) {
   const val = parseFloat(value);
-  if (!val || val <= 0) delete ticket[id];
-  else ticket[id] = val;
+  const client = clientActif();
+  if (!val || val <= 0) delete client.items[id];
+  else client.items[id] = val;
   renderProdGrid();
   renderTicket();
 }
 
 function renderTicket() {
   const linesEl = document.getElementById('ticket-lines');
-  const ids = Object.keys(ticket);
-  if (ids.length === 0) {
+  const clientsAvecItems = ticket.clients.filter((c) => Object.keys(c.items).length > 0);
+
+  if (clientsAvecItems.length === 0) {
     linesEl.innerHTML = '<div class="empty">Aucun article sélectionné</div>';
     document.getElementById('ticket-total').textContent = '0 FCFA';
     document.getElementById('btn-valider').disabled = true;
     return;
   }
+
   let total = 0;
-  linesEl.innerHTML = ids.map((id) => {
-    const p = produits.find((x) => x.id === id);
-    const montant = ticket[id];
-    const qteApprox = (montant / p.prix).toFixed(1);
-    total += montant;
-    return `<div class="line"><span>${p.nom} (≈${qteApprox} u.)</span><span>${montant} FCFA</span></div>`;
+  const afficherNomClient = clientsAvecItems.length > 1;
+  linesEl.innerHTML = clientsAvecItems.map((c) => {
+    let sousTotal = 0;
+    const lignesHtml = Object.keys(c.items).map((id) => {
+      const p = produits.find((x) => x.id === id);
+      const montant = c.items[id];
+      const qteApprox = (montant / p.prix).toFixed(1);
+      sousTotal += montant;
+      return `<div class="line"><span>${p.nom} (≈${qteApprox} u.)</span><span>${montant} FCFA</span></div>`;
+    }).join('');
+    total += sousTotal;
+    return `<div class="client-groupe">
+      ${afficherNomClient ? `<div class="client-nom">${c.nom} — ${sousTotal} FCFA</div>` : ''}
+      ${lignesHtml}
+    </div>`;
   }).join('');
+
   document.getElementById('ticket-total').textContent = total + ' FCFA';
   document.getElementById('btn-valider').disabled = false;
 }
 
 async function validerCommande() {
   const now = new Date().toISOString();
-  const nouvelles = Object.keys(ticket).map((id) => {
-    const p = produits.find((x) => x.id === id);
-    const montant = ticket[id];
-    return {
-      id: nouvelId('cmd'),
-      produitId: id,
-      montant,
-      quantiteApprox: montant / p.prix,
-      prixUnitaire: p.prix,
-      date: now,
-      periode_cloturee: 0,
-    };
+  const factureId = nouvelId('facture');
+  const clientsAvecItems = ticket.clients.filter((c) => Object.keys(c.items).length > 0);
+  const multiClients = clientsAvecItems.length > 1;
+
+  const nouvelles = [];
+  clientsAvecItems.forEach((c) => {
+    Object.keys(c.items).forEach((id) => {
+      const p = produits.find((x) => x.id === id);
+      const montant = c.items[id];
+      nouvelles.push({
+        id: nouvelId('cmd'),
+        factureId,
+        clientNom: multiClients ? c.nom : null,
+        produitId: id,
+        montant,
+        quantiteApprox: montant / p.prix,
+        prixUnitaire: p.prix,
+        date: now,
+        periode_cloturee: 0,
+      });
+    });
   });
+
   await dbBulkPut('commandes', nouvelles);
   commandesValidees.push(...nouvelles);
-  ticket = {};
+
+  ticket = { clients: [{ id: 'c1', nom: 'Client 1', items: {} }], activeClientId: 'c1' };
+  renderClientTabs();
   renderProdGrid();
   renderTicket();
   showToast('Commande validée ✓');
@@ -157,6 +231,73 @@ async function ajouterProduit() {
   closeModal('modal-produit');
   renderProdGrid();
   showToast(nom + ' ajouté au menu');
+}
+
+// ---------------- ÉCRAN FACTURES ----------------
+function grouperFactures(lignes) {
+  const groupes = {};
+  lignes.forEach((l) => {
+    const cle = l.factureId || l.id; // repli pour les anciennes lignes sans factureId
+    if (!groupes[cle]) groupes[cle] = { id: cle, date: l.date, periode_cloturee: l.periode_cloturee, lignes: [] };
+    groupes[cle].lignes.push(l);
+  });
+  return Object.values(groupes).sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
+function setFacturePeriod(p) {
+  periodeFactures = p;
+  document.querySelectorAll('#facture-period-tabs .period-tab').forEach((b) => b.classList.remove('active'));
+  document.querySelector('#facture-period-tabs .period-tab[data-period="' + p + '"]').classList.add('active');
+  renderFacturesScreen();
+}
+
+function renderFacturesScreen() {
+  const debut = debutPeriode(periodeFactures);
+  const labels = { jour: "Aujourd'hui", semaine: 'Depuis lundi ' + formatDateCourt(debut), mois: 'Depuis le ' + formatDateCourt(debut) };
+  document.getElementById('facture-period-range').textContent = labels[periodeFactures];
+
+  const lignesFiltrees = commandesValidees.filter((l) => new Date(l.date) >= debut);
+  const factures = grouperFactures(lignesFiltrees);
+  const zone = document.getElementById('factures-list');
+
+  if (factures.length === 0) {
+    zone.innerHTML = '<div class="ticket empty" style="border:none; background:none;">Aucune facture sur cette période</div>';
+    return;
+  }
+
+  zone.innerHTML = factures.map((f) => {
+    const heure = new Date(f.date).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const total = f.lignes.reduce((a, l) => a + l.montant, 0);
+    const parClient = {};
+    f.lignes.forEach((l) => {
+      const cle = l.clientNom || '__seul__';
+      if (!parClient[cle]) parClient[cle] = [];
+      parClient[cle].push(l);
+    });
+    const multiClients = Object.keys(parClient).length > 1;
+
+    const corpsHtml = Object.keys(parClient).map((cle) => {
+      const lignesClient = parClient[cle];
+      const sousTotal = lignesClient.reduce((a, l) => a + l.montant, 0);
+      const lignesHtml = lignesClient.map((l) => {
+        const p = produits.find((x) => x.id === l.produitId);
+        return `<div class="line"><span>${p ? p.nom : '?'}</span><span>${l.montant} FCFA</span></div>`;
+      }).join('');
+      return `<div class="client-groupe">
+        ${multiClients ? `<div class="client-nom">${cle} — ${sousTotal} FCFA</div>` : ''}
+        ${lignesHtml}
+      </div>`;
+    }).join('');
+
+    return `<div class="bilan-card">
+      <div class="bilan-head">
+        <div class="bilan-mois" style="text-transform:none;">${heure}</div>
+        ${f.periode_cloturee ? '<span class="lock-icon">🔒</span>' : ''}
+      </div>
+      ${corpsHtml}
+      <div class="bilan-benefice">Total : ${total} FCFA</div>
+    </div>`;
+  }).join('');
 }
 
 // ---------------- ÉCRAN DÉPENSES ----------------
@@ -215,11 +356,13 @@ function renderDepensesList() {
 
 // ---------------- ÉCRAN CHARGES ----------------
 async function ajouterCharge() {
+  const libelle = document.getElementById('charge-libelle').value.trim();
   const type = document.getElementById('charge-type').value;
   const montant = parseFloat(document.getElementById('charge-montant').value);
-  if (!montant) { showToast('Montant requis'); return; }
+  if (!libelle || !montant) { showToast('Libellé et montant requis'); return; }
   const nouvelleCharge = {
     id: nouvelId('chg'),
+    libelle,
     type,
     montant,
     statut: 'du',
@@ -228,9 +371,11 @@ async function ajouterCharge() {
   };
   await dbPut('charges', nouvelleCharge);
   charges.push(nouvelleCharge);
+  document.getElementById('charge-libelle').value = '';
   document.getElementById('charge-montant').value = '';
+  closeModal('modal-charge');
   renderChargesList();
-  showToast('Charge enregistrée');
+  showToast('Achat enregistré');
 }
 
 async function toggleChargeStatut(id) {
@@ -243,18 +388,19 @@ async function toggleChargeStatut(id) {
 
 function renderChargesList() {
   const list = document.getElementById('charges-list');
-  if (charges.length === 0) { list.innerHTML = '<div class="ticket empty" style="border:none; background:none;">Aucune charge enregistrée</div>'; return; }
+  if (charges.length === 0) { list.innerHTML = '<div class="ticket empty" style="border:none; background:none;">Aucun achat enregistré</div>'; return; }
   list.innerHTML = charges.slice().reverse().map((c) => {
     const lockCls = c.periode_cloturee ? 'locked' : '';
     const lockIcon = c.periode_cloturee ? '<span class="lock-icon">🔒</span>' : '';
+    const libelle = c.libelle || c.type; // repli pour les anciennes charges sans libellé
     return `<div class="list-item ${lockCls}" onclick="toggleChargeStatut('${c.id}')" style="cursor:${c.periode_cloturee ? 'default' : 'pointer'};">
-      <div><div class="li-name">${lockIcon}${c.type}</div><div class="li-meta"><span class="status-tag ${c.statut}">${c.statut === 'paye' ? 'Payé' : 'Dû'}</span></div></div>
+      <div><div class="li-name">${lockIcon}${libelle}</div><div class="li-meta">${c.type} · <span class="status-tag ${c.statut}">${c.statut === 'paye' ? 'Payé' : 'Dû'}</span></div></div>
       <div class="li-amount chili">${c.montant} FCFA</div>
     </div>`;
   }).join('');
 }
 
-// ---------------- TABLEAU DE BORD ----------------
+// ---------------- OUTILS DE PÉRIODE (partagés Tableau / Factures / Bilans) ----------------
 function debutPeriode(periode) {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -272,10 +418,11 @@ function formatDateCourt(d) {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 }
 
+// ---------------- TABLEAU DE BORD ----------------
 function setPeriod(periode) {
   periodeActuelle = periode;
-  document.querySelectorAll('.period-tab').forEach((b) => b.classList.remove('active'));
-  document.querySelector('.period-tab[data-period="' + periode + '"]').classList.add('active');
+  document.querySelectorAll('#period-tabs .period-tab').forEach((b) => b.classList.remove('active'));
+  document.querySelector('#period-tabs .period-tab[data-period="' + periode + '"]').classList.add('active');
   renderDashboard();
 }
 
@@ -325,17 +472,43 @@ function renderDashboard() {
   }).join('');
 }
 
-// ---------------- BILANS MENSUELS ----------------
+// ---------------- BILANS : JOUR / SEMAINE / MOIS ----------------
+// "jour" et "semaine" sont des instantanés informatifs (recalculés depuis les lignes brutes,
+// comme le Tableau de bord) — rien n'est verrouillé. Seul "mois" est la clôture officielle :
+// elle verrouille les lignes concernées (periode_cloturee = 1) pour figer l'historique.
+
+function calculerAgregats(lignesCmd, lignesDep, lignesChg) {
+  const ca = lignesCmd.reduce((a, l) => a + l.montant, 0);
+  const coutParProduit = {};
+  lignesDep.forEach((d) => {
+    const part = d.montant / d.produits.length;
+    d.produits.forEach((pid) => { coutParProduit[pid] = (coutParProduit[pid] || 0) + part; });
+  });
+  const cout = Object.values(coutParProduit).reduce((a, b) => a + b, 0);
+  const marge = ca - cout;
+  const chargesTotal = lignesChg.filter((c) => c.type !== 'Épargne').reduce((a, c) => a + c.montant, 0);
+  const benefice = marge - chargesTotal;
+  return { ca, cout, marge, charges: chargesTotal, benefice };
+}
+
+function setBilanType(type) {
+  bilanTypeAffiche = type;
+  document.querySelectorAll('#bilan-type-tabs .period-tab').forEach((b) => b.classList.remove('active'));
+  document.querySelector('#bilan-type-tabs .period-tab[data-type="' + type + '"]').classList.add('active');
+  renderBilansScreen();
+}
+
 function renderBilansScreen() {
   const list = document.getElementById('bilans-list');
-  if (bilansMensuels.length === 0) {
+  const filtres = bilansMensuels.filter((b) => b.type === bilanTypeAffiche);
+  if (filtres.length === 0) {
     list.innerHTML = '<div class="ticket empty" style="border:none; background:none;">Aucun bilan généré pour l\'instant</div>';
     return;
   }
-  list.innerHTML = bilansMensuels.slice().reverse().map((b) => `
+  list.innerHTML = filtres.slice().reverse().map((b) => `
     <div class="bilan-card">
       <div class="bilan-head">
-        <div class="bilan-mois">${b.mois}</div>
+        <div class="bilan-mois">${b.libelle}</div>
         ${b.genere_en_retard ? '<span class="badge-retard">Rattrapé au démarrage</span>' : ''}
       </div>
       <div class="bilan-grid">
@@ -349,32 +522,42 @@ function renderBilansScreen() {
   `).join('');
 }
 
-// Calcule et enregistre un bilan à partir des lignes non clôturées,
-// puis les marque periode_cloturee = 1. Reproduit la logique de bhb_schema.sql.
-async function genererBilan(mois, genereEnRetard) {
+// Snapshot jour/semaine — ne verrouille rien, purement informatif.
+async function genererBilanSnapshot(type, libelle, debut, fin, genereEnRetard) {
+  const lignesCmd = commandesValidees.filter((l) => { const d = new Date(l.date); return d >= debut && d < fin; });
+  const lignesDep = depenses.filter((d) => { const dt = new Date(d.date); return dt >= debut && dt < fin; });
+  const lignesChg = charges.filter((c) => { const dt = new Date(c.date); return dt >= debut && dt < fin; });
+
+  if (lignesCmd.length === 0 && lignesDep.length === 0 && lignesChg.length === 0) return false;
+
+  const agg = calculerAgregats(lignesCmd, lignesDep, lignesChg);
+  const bilan = {
+    id: nouvelId('bilan'),
+    type,
+    libelle,
+    ...agg,
+    genere_en_retard: genereEnRetard ? 1 : 0,
+    date_generation: new Date().toISOString(),
+  };
+  await dbPut('bilans_mensuels', bilan);
+  bilansMensuels.push(bilan);
+  return true;
+}
+
+// Clôture mensuelle officielle — verrouille les lignes concernées.
+async function genererBilanMensuelOfficiel(libelle, genereEnRetard) {
   const commandesOuvertes = commandesValidees.filter((l) => !l.periode_cloturee);
   const depensesOuvertes = depenses.filter((d) => !d.periode_cloturee);
   const chargesOuvertes = charges.filter((c) => !c.periode_cloturee);
 
-  if (commandesOuvertes.length === 0 && depensesOuvertes.length === 0 && chargesOuvertes.length === 0) {
-    return false;
-  }
+  if (commandesOuvertes.length === 0 && depensesOuvertes.length === 0 && chargesOuvertes.length === 0) return false;
 
-  const ca = commandesOuvertes.reduce((a, l) => a + l.montant, 0);
-  const coutParProduit = {};
-  depensesOuvertes.forEach((d) => {
-    const part = d.montant / d.produits.length;
-    d.produits.forEach((pid) => { coutParProduit[pid] = (coutParProduit[pid] || 0) + part; });
-  });
-  const cout = Object.values(coutParProduit).reduce((a, b) => a + b, 0);
-  const marge = ca - cout;
-  const chargesTotal = chargesOuvertes.filter((c) => c.type !== 'Épargne').reduce((a, c) => a + c.montant, 0);
-  const benefice = marge - chargesTotal;
-
+  const agg = calculerAgregats(commandesOuvertes, depensesOuvertes, chargesOuvertes);
   const bilan = {
     id: nouvelId('bilan'),
-    mois,
-    ca, cout, marge, charges: chargesTotal, benefice,
+    type: 'mois',
+    libelle,
+    ...agg,
     genere_en_retard: genereEnRetard ? 1 : 0,
     date_generation: new Date().toISOString(),
   };
@@ -391,44 +574,76 @@ async function genererBilan(mois, genereEnRetard) {
   return true;
 }
 
-async function clotureManuelle() {
-  const mois = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-  const ok = await genererBilan(mois, false);
-  if (!ok) { showToast('Rien à clôturer — tout est déjà figé'); return; }
+async function clotureManuelle(type) {
+  let ok;
+  if (type === 'jour') {
+    const debut = debutPeriode('jour');
+    const fin = new Date(debut); fin.setDate(fin.getDate() + 1);
+    const libelle = debut.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' });
+    ok = await genererBilanSnapshot('jour', libelle, debut, fin, false);
+  } else if (type === 'semaine') {
+    const debut = debutPeriode('semaine');
+    const fin = new Date(debut); fin.setDate(fin.getDate() + 7);
+    const libelle = 'Semaine du ' + formatDateCourt(debut) + ' au ' + formatDateCourt(new Date(fin - 1));
+    ok = await genererBilanSnapshot('semaine', libelle, debut, fin, false);
+  } else {
+    const libelle = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    ok = await genererBilanMensuelOfficiel(libelle, false);
+  }
+
+  if (!ok) { showToast('Rien à clôturer pour cette période'); return; }
+  bilanTypeAffiche = type;
   renderBilansScreen();
   renderDepensesList();
   renderChargesList();
-  showToast('Mois clôturé — bilan généré ✓');
+  showToast('Clôture (' + type + ') générée ✓');
 }
 
-// Vérifie au démarrage si le mois précédent a été clôturé. Sinon, rattrape.
-// (En usage réel, on comparerait aussi la date système à un dernier-mois-clôturé
-// stocké ; ici on se base simplement sur la présence de données non clôturées
-// datant d'un mois civil déjà terminé.)
+// Vérifie au démarrage : jour précédent, semaine précédente, et mois précédent
+// non encore clôturés → rattrapage automatique et silencieux (sauf toast).
 async function verifierRattrapageCloture() {
   const maintenant = new Date();
+
+  // -- Jour précédent --
+  const hier = new Date(maintenant); hier.setDate(hier.getDate() - 1); hier.setHours(0, 0, 0, 0);
+  const finHier = new Date(hier); finHier.setDate(finHier.getDate() + 1);
+  const libelleHier = hier.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' });
+  const dejaJour = bilansMensuels.some((b) => b.type === 'jour' && b.libelle === libelleHier);
+  if (!dejaJour) {
+    const ok = await genererBilanSnapshot('jour', libelleHier, hier, finHier, true);
+    if (ok) showToast('Bilan du jour précédent rattrapé');
+  }
+
+  // -- Semaine précédente --
+  const debutSemaineEnCours = debutPeriode('semaine');
+  const debutSemainePrecedente = new Date(debutSemaineEnCours); debutSemainePrecedente.setDate(debutSemainePrecedente.getDate() - 7);
+  const finSemainePrecedente = new Date(debutSemaineEnCours);
+  const libelleSemaine = 'Semaine du ' + formatDateCourt(debutSemainePrecedente) + ' au ' + formatDateCourt(new Date(finSemainePrecedente - 1));
+  const dejaSemaine = bilansMensuels.some((b) => b.type === 'semaine' && b.libelle === libelleSemaine);
+  if (!dejaSemaine && debutSemainePrecedente < maintenant) {
+    const ok = await genererBilanSnapshot('semaine', libelleSemaine, debutSemainePrecedente, finSemainePrecedente, true);
+    if (ok) showToast('Bilan de la semaine précédente rattrapé');
+  }
+
+  // -- Mois précédent (officiel, verrouille) --
   const moisEnCours = maintenant.getMonth();
   const anneeEnCours = maintenant.getFullYear();
-
   const aDesDonneesMoisPrecedent = [...depenses, ...charges, ...commandesValidees].some((item) => {
     if (item.periode_cloturee) return false;
     const d = new Date(item.date);
     return d.getFullYear() < anneeEnCours || (d.getFullYear() === anneeEnCours && d.getMonth() < moisEnCours);
   });
-
   if (aDesDonneesMoisPrecedent) {
     const moisPrecedent = new Date(anneeEnCours, moisEnCours - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-    const ok = await genererBilan(moisPrecedent, true);
-    if (ok) showToast('Bilan du mois précédent rattrapé automatiquement');
+    const ok = await genererBilanMensuelOfficiel(moisPrecedent, true);
+    if (ok) showToast('Bilan du mois précédent rattrapé');
   }
 }
 
 // ---------------- PWA : SERVICE WORKER + STATUT CONNEXION ----------------
 function registrerServiceWorker() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js').catch(() => {
-      // échec silencieux : l'app continue de fonctionner sans cache offline
-    });
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
   }
 }
 
