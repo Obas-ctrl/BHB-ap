@@ -418,6 +418,12 @@ function formatDateCourt(d) {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 }
 
+// Épargne totale accumulée depuis le début — jamais filtrée par période,
+// car c'est un solde cumulé, pas un flux de la période.
+function calculerEpargneTotale() {
+  return charges.filter((c) => c.type === 'Épargne').reduce((a, c) => a + c.montant, 0);
+}
+
 // ---------------- TABLEAU DE BORD ----------------
 function setPeriod(periode) {
   periodeActuelle = periode;
@@ -440,13 +446,9 @@ function renderDashboard() {
   commandesFiltrees.forEach((l) => { caParProduit[l.produitId] = (caParProduit[l.produitId] || 0) + l.montant; });
   const ca = Object.values(caParProduit).reduce((a, b) => a + b, 0);
 
-  const coutParProduit = {};
-  produits.forEach((p) => coutParProduit[p.id] = 0);
-  depensesFiltrees.forEach((d) => {
-    const part = d.montant / d.produits.length;
-    d.produits.forEach((pid) => { coutParProduit[pid] = (coutParProduit[pid] || 0) + part; });
-  });
-  const coutTotal = Object.values(coutParProduit).reduce((a, b) => a + b, 0);
+  // Coût des ingrédients : uniquement global, jamais réparti par produit
+  // (une répartition précise par produit n'a pas de sens au jour le jour).
+  const coutTotal = depensesFiltrees.reduce((a, d) => a + d.montant, 0);
 
   const margeBrute = ca - coutTotal;
   const chargesHorsEpargne = chargesFiltrees.filter((c) => c.type !== 'Épargne').reduce((a, c) => a + c.montant, 0);
@@ -459,14 +461,15 @@ function renderDashboard() {
   document.getElementById('kpi-charges').textContent = '−' + chargesHorsEpargne + ' FCFA';
   document.getElementById('kpi-benefice').textContent = beneficeNet + ' FCFA';
   document.getElementById('epargne-note').textContent = 'Épargne à provisionner sur la période : ' + epargne + ' FCFA — non déduite du bénéfice.';
+  document.getElementById('epargne-totale-note').textContent = 'Épargne totale accumulée : ' + calculerEpargneTotale() + ' FCFA';
 
+  // Barres : chiffre d'affaires par produit uniquement (pas de coût attribué)
   const bars = document.getElementById('marge-bars');
   const maxCA = Math.max(1, ...Object.values(caParProduit));
   bars.innerHTML = produits.map((p) => {
-    const margeP = caParProduit[p.id] - coutParProduit[p.id];
     const pct = Math.max(0, (caParProduit[p.id] / maxCA) * 100);
     return `<div class="bar-row">
-      <div class="bar-label"><span>${p.nom}</span><span>${margeP} FCFA</span></div>
+      <div class="bar-label"><span>${p.nom}</span><span>${caParProduit[p.id]} FCFA</span></div>
       <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
     </div>`;
   }).join('');
@@ -479,12 +482,7 @@ function renderDashboard() {
 
 function calculerAgregats(lignesCmd, lignesDep, lignesChg) {
   const ca = lignesCmd.reduce((a, l) => a + l.montant, 0);
-  const coutParProduit = {};
-  lignesDep.forEach((d) => {
-    const part = d.montant / d.produits.length;
-    d.produits.forEach((pid) => { coutParProduit[pid] = (coutParProduit[pid] || 0) + part; });
-  });
-  const cout = Object.values(coutParProduit).reduce((a, b) => a + b, 0);
+  const cout = lignesDep.reduce((a, d) => a + d.montant, 0);
   const marge = ca - cout;
   const chargesTotal = lignesChg.filter((c) => c.type !== 'Épargne').reduce((a, c) => a + c.montant, 0);
   const benefice = marge - chargesTotal;
@@ -499,6 +497,7 @@ function setBilanType(type) {
 }
 
 function renderBilansScreen() {
+  document.getElementById('bilan-epargne-totale-note').textContent = 'Épargne totale accumulée : ' + calculerEpargneTotale() + ' FCFA';
   const list = document.getElementById('bilans-list');
   const filtres = bilansMensuels.filter((b) => b.type === bilanTypeAffiche);
   if (filtres.length === 0) {
