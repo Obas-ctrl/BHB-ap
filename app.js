@@ -460,29 +460,27 @@ function calculerEpargneTotale() {
   return charges.filter((c) => c.type === 'Épargne').reduce((a, c) => a + c.montant, 0);
 }
 
-// Solde veille : ce qui restait avant ce matin (toutes ventes − toutes dépenses/charges
-// datées avant aujourd'hui), moins les dépenses/charges/épargne déjà ajoutées aujourd'hui.
-// Les ventes d'aujourd'hui, elles, s'accumulent à part dans "CA du jour" — pas mélangées ici.
+// Solde veille : uniquement le total des commandes (ventes) d'HIER — le jour calendaire
+// précédent, rien d'autre. Pas de déduction, pas de cascade sur les jours antérieurs.
+// C'est un point de départ figé pour la journée, recalculé chaque matin.
 function calculerSoldeVeille() {
-  const debut = debutPeriode('jour');
-  const avantAujourdhui = (item) => new Date(item.date) < debut;
-
-  const caAvant = commandesValidees.filter(avantAujourdhui).reduce((a, l) => a + l.montant, 0);
-  const coutAvant = depenses.filter(avantAujourdhui).reduce((a, d) => a + d.montant, 0);
-  const chargesAvant = charges.filter(avantAujourdhui).reduce((a, c) => a + c.montant, 0);
-  const soldeBase = caAvant - coutAvant - chargesAvant;
-
-  const coutAujourdhui = depenses.filter((d) => !avantAujourdhui(d)).reduce((a, d) => a + d.montant, 0);
-  const chargesAujourdhui = charges.filter((c) => !avantAujourdhui(c)).reduce((a, c) => a + c.montant, 0);
-
-  return soldeBase - coutAujourdhui - chargesAujourdhui;
+  const debutAujourdhui = debutPeriode('jour');
+  const debutHier = new Date(debutAujourdhui);
+  debutHier.setDate(debutHier.getDate() - 1);
+  return commandesValidees
+    .filter((l) => { const d = new Date(l.date); return d >= debutHier && d < debutAujourdhui; })
+    .reduce((a, l) => a + l.montant, 0);
 }
 
-// CA du jour : uniquement les ventes d'aujourd'hui, toujours (indépendant de l'onglet
-// Jour/Semaine/Mois sélectionné plus bas dans le tableau de bord).
-function calculerCADuJour() {
+// CA en direct pour "Jour" : part du solde veille (figé), puis bouge avec les
+// mouvements d'aujourd'hui — ventes en plus, dépenses/charges/achats/épargne en moins.
+function calculerCALiveDuJour() {
+  const soldeVeille = calculerSoldeVeille();
   const debut = debutPeriode('jour');
-  return commandesValidees.filter((l) => new Date(l.date) >= debut).reduce((a, l) => a + l.montant, 0);
+  const ventesAujourdhui = commandesValidees.filter((l) => new Date(l.date) >= debut).reduce((a, l) => a + l.montant, 0);
+  const depensesAujourdhui = depenses.filter((d) => new Date(d.date) >= debut).reduce((a, d) => a + d.montant, 0);
+  const chargesAujourdhui = charges.filter((c) => new Date(c.date) >= debut).reduce((a, c) => a + c.montant, 0);
+  return soldeVeille + ventesAujourdhui - depensesAujourdhui - chargesAujourdhui;
 }
 
 // ---------------- TABLEAU DE BORD ----------------
@@ -516,16 +514,12 @@ function renderDashboard() {
   const epargne = chargesFiltrees.filter((c) => c.type === 'Épargne').reduce((a, c) => a + c.montant, 0);
   const beneficeNet = margeBrute - chargesTotal;
 
-  document.getElementById('kpi-ca').textContent = ca + ' FCFA';
+  document.getElementById('kpi-ca').textContent = (periodeActuelle === 'jour' ? calculerCALiveDuJour() : ca) + ' FCFA';
   document.getElementById('kpi-cout').textContent = '−' + coutTotal + ' FCFA';
   document.getElementById('kpi-marge').textContent = margeBrute + ' FCFA';
   document.getElementById('kpi-charges').textContent = '−' + chargesTotal + ' FCFA';
   document.getElementById('kpi-benefice').textContent = beneficeNet + ' FCFA';
-  const soldeVeille = calculerSoldeVeille();
-  const caDuJour = calculerCADuJour();
-  document.getElementById('kpi-solde-veille').textContent = soldeVeille + ' FCFA';
-  document.getElementById('kpi-ca-jour').textContent = caDuJour + ' FCFA';
-  document.getElementById('solde-total-note').textContent = 'Total disponible (solde veille + CA du jour) : ' + (soldeVeille + caDuJour) + ' FCFA';
+  document.getElementById('kpi-solde-veille').textContent = calculerSoldeVeille() + ' FCFA';
   document.getElementById('epargne-note').textContent = 'Dont épargne sur la période : ' + epargne + ' FCFA — déjà déduite du bénéfice ci-dessus.';
   document.getElementById('epargne-totale-note').textContent = 'Épargne totale accumulée : ' + calculerEpargneTotale() + ' FCFA';
 
