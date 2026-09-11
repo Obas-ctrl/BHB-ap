@@ -460,14 +460,29 @@ function calculerEpargneTotale() {
   return charges.filter((c) => c.type === 'Épargne').reduce((a, c) => a + c.montant, 0);
 }
 
-// Solde cumulé depuis le début (toutes ventes − toutes dépenses − toutes charges,
-// épargne comprise, sans filtre de date). Répond à "combien ai-je réellement en poche",
-// indépendamment du fait que "Jour" redémarre à zéro chaque matin.
-function calculerSoldeCumule() {
-  const ca = commandesValidees.reduce((a, l) => a + l.montant, 0);
-  const cout = depenses.reduce((a, d) => a + d.montant, 0);
-  const chargesTotal = charges.reduce((a, c) => a + c.montant, 0);
-  return ca - cout - chargesTotal;
+// Solde veille : ce qui restait avant ce matin (toutes ventes − toutes dépenses/charges
+// datées avant aujourd'hui), moins les dépenses/charges/épargne déjà ajoutées aujourd'hui.
+// Les ventes d'aujourd'hui, elles, s'accumulent à part dans "CA du jour" — pas mélangées ici.
+function calculerSoldeVeille() {
+  const debut = debutPeriode('jour');
+  const avantAujourdhui = (item) => new Date(item.date) < debut;
+
+  const caAvant = commandesValidees.filter(avantAujourdhui).reduce((a, l) => a + l.montant, 0);
+  const coutAvant = depenses.filter(avantAujourdhui).reduce((a, d) => a + d.montant, 0);
+  const chargesAvant = charges.filter(avantAujourdhui).reduce((a, c) => a + c.montant, 0);
+  const soldeBase = caAvant - coutAvant - chargesAvant;
+
+  const coutAujourdhui = depenses.filter((d) => !avantAujourdhui(d)).reduce((a, d) => a + d.montant, 0);
+  const chargesAujourdhui = charges.filter((c) => !avantAujourdhui(c)).reduce((a, c) => a + c.montant, 0);
+
+  return soldeBase - coutAujourdhui - chargesAujourdhui;
+}
+
+// CA du jour : uniquement les ventes d'aujourd'hui, toujours (indépendant de l'onglet
+// Jour/Semaine/Mois sélectionné plus bas dans le tableau de bord).
+function calculerCADuJour() {
+  const debut = debutPeriode('jour');
+  return commandesValidees.filter((l) => new Date(l.date) >= debut).reduce((a, l) => a + l.montant, 0);
 }
 
 // ---------------- TABLEAU DE BORD ----------------
@@ -506,7 +521,11 @@ function renderDashboard() {
   document.getElementById('kpi-marge').textContent = margeBrute + ' FCFA';
   document.getElementById('kpi-charges').textContent = '−' + chargesTotal + ' FCFA';
   document.getElementById('kpi-benefice').textContent = beneficeNet + ' FCFA';
-  document.getElementById('kpi-solde-cumule').textContent = calculerSoldeCumule() + ' FCFA';
+  const soldeVeille = calculerSoldeVeille();
+  const caDuJour = calculerCADuJour();
+  document.getElementById('kpi-solde-veille').textContent = soldeVeille + ' FCFA';
+  document.getElementById('kpi-ca-jour').textContent = caDuJour + ' FCFA';
+  document.getElementById('solde-total-note').textContent = 'Total disponible (solde veille + CA du jour) : ' + (soldeVeille + caDuJour) + ' FCFA';
   document.getElementById('epargne-note').textContent = 'Dont épargne sur la période : ' + epargne + ' FCFA — déjà déduite du bénéfice ci-dessus.';
   document.getElementById('epargne-totale-note').textContent = 'Épargne totale accumulée : ' + calculerEpargneTotale() + ' FCFA';
 

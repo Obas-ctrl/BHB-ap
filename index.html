@@ -79,20 +79,28 @@
       </div>
       <div class="period-range" id="period-range">Aujourd'hui</div>
 
-      <div class="kpi hero" style="margin-bottom:14px;">
-        <div class="label">Bénéfice net (période sélectionnée)</div>
-        <div class="value" id="kpi-benefice">0 FCFA</div>
+      <div class="kpi hero" style="margin-bottom:14px; border-color:var(--haricot);">
+        <div class="label" style="color:var(--haricot);">Solde veille</div>
+        <div class="value" id="kpi-solde-veille" style="color:var(--haricot);">0 FCFA</div>
+        <div style="font-size:11px; color:var(--muted); margin-top:8px;">Ce que tu avais avant ce matin, moins tes dépenses/achats/épargne d'aujourd'hui au fur et à mesure</div>
       </div>
 
-      <div class="kpi" style="margin-bottom:14px; border-color:var(--haricot);">
-        <div class="label" style="color:var(--haricot);">Solde cumulé depuis le début</div>
-        <div class="value" id="kpi-solde-cumule" style="color:var(--haricot); font-size:22px;">0 FCFA</div>
-        <div style="font-size:10px; color:var(--muted); margin-top:6px;">Ne redémarre jamais à zéro — répond à "combien j'ai réellement en poche"</div>
+      <div class="kpi" style="margin-bottom:14px; border-color:var(--gold);">
+        <div class="label" style="color:var(--gold);">CA du jour</div>
+        <div class="value" id="kpi-ca-jour" style="color:var(--gold); font-size:22px;">0 FCFA</div>
+        <div style="font-size:11px; color:var(--muted); margin-top:6px;">Uniquement tes ventes d'aujourd'hui — s'ajoute au solde veille</div>
+      </div>
+
+      <div class="epargne-note" id="solde-total-note" style="font-weight:700; margin-bottom:14px;">Total disponible (solde veille + CA du jour) : 0 FCFA</div>
+
+      <div class="kpi" style="margin-bottom:14px;">
+        <div class="label">Bénéfice net (période sélectionnée : Jour/Semaine/Mois)</div>
+        <div class="value" id="kpi-benefice" style="font-size:20px;">0 FCFA</div>
       </div>
 
       <div class="kpi-grid">
         <div class="kpi">
-          <div class="label">Chiffre d'affaires</div>
+          <div class="label">Chiffre d'affaires (période)</div>
           <div class="value" id="kpi-ca" style="font-size:18px;">0</div>
         </div>
         <div class="kpi">
