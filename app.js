@@ -292,12 +292,23 @@ function renderFacturesScreen() {
     return `<div class="bilan-card">
       <div class="bilan-head">
         <div class="bilan-mois" style="text-transform:none;">${heure}</div>
-        ${f.periode_cloturee ? '<span class="lock-icon">🔒</span>' : ''}
+        ${f.periode_cloturee ? '<span class="lock-icon">🔒</span>' : `<span class="delete-btn" onclick="supprimerFacture('${f.id}')">🗑 Supprimer</span>`}
       </div>
       ${corpsHtml}
       <div class="bilan-benefice">Total : ${total} FCFA</div>
     </div>`;
   }).join('');
+}
+
+async function supprimerFacture(factureId) {
+  if (!confirm('Supprimer cette facture ? Cette action est définitive.')) return;
+  const lignes = commandesValidees.filter((l) => (l.factureId || l.id) === factureId);
+  for (const l of lignes) {
+    await dbDelete('commandes', l.id);
+  }
+  commandesValidees = commandesValidees.filter((l) => (l.factureId || l.id) !== factureId);
+  renderFacturesScreen();
+  showToast('Facture supprimée');
 }
 
 // ---------------- ÉCRAN DÉPENSES ----------------
@@ -347,11 +358,23 @@ function renderDepensesList() {
     const noms = d.produits.map((pid) => produits.find((p) => p.id === pid)?.nom || '?').join(', ');
     const lockCls = d.periode_cloturee ? 'locked' : '';
     const lockIcon = d.periode_cloturee ? '<span class="lock-icon">🔒</span>' : '';
+    const suppr = d.periode_cloturee ? '' : `<span class="delete-btn" onclick="supprimerDepense('${d.id}')">🗑</span>`;
     return `<div class="list-item ${lockCls}">
       <div><div class="li-name">${lockIcon}${d.libelle}</div><div class="li-meta">${noms}</div></div>
-      <div class="li-amount chili">−${d.montant}</div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="li-amount chili">−${d.montant}</div>
+        ${suppr}
+      </div>
     </div>`;
   }).join('');
+}
+
+async function supprimerDepense(id) {
+  if (!confirm('Supprimer cette dépense ?')) return;
+  await dbDelete('depenses', id);
+  depenses = depenses.filter((d) => d.id !== id);
+  renderDepensesList();
+  showToast('Dépense supprimée');
 }
 
 // ---------------- ÉCRAN CHARGES ----------------
@@ -393,11 +416,24 @@ function renderChargesList() {
     const lockCls = c.periode_cloturee ? 'locked' : '';
     const lockIcon = c.periode_cloturee ? '<span class="lock-icon">🔒</span>' : '';
     const libelle = c.libelle || c.type; // repli pour les anciennes charges sans libellé
+    const suppr = c.periode_cloturee ? '' : `<span class="delete-btn" onclick="supprimerCharge(event, '${c.id}')">🗑</span>`;
     return `<div class="list-item ${lockCls}" onclick="toggleChargeStatut('${c.id}')" style="cursor:${c.periode_cloturee ? 'default' : 'pointer'};">
       <div><div class="li-name">${lockIcon}${libelle}</div><div class="li-meta">${c.type} · <span class="status-tag ${c.statut}">${c.statut === 'paye' ? 'Payé' : 'Dû'}</span></div></div>
-      <div class="li-amount chili">${c.montant} FCFA</div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="li-amount chili">${c.montant} FCFA</div>
+        ${suppr}
+      </div>
     </div>`;
   }).join('');
+}
+
+async function supprimerCharge(event, id) {
+  event.stopPropagation();
+  if (!confirm('Supprimer cette charge ?')) return;
+  await dbDelete('charges', id);
+  charges = charges.filter((c) => c.id !== id);
+  renderChargesList();
+  showToast('Charge supprimée');
 }
 
 // ---------------- OUTILS DE PÉRIODE (partagés Tableau / Factures / Bilans) ----------------
@@ -422,6 +458,16 @@ function formatDateCourt(d) {
 // car c'est un solde cumulé, pas un flux de la période.
 function calculerEpargneTotale() {
   return charges.filter((c) => c.type === 'Épargne').reduce((a, c) => a + c.montant, 0);
+}
+
+// Solde cumulé depuis le début (toutes ventes − toutes dépenses − toutes charges
+// hors épargne, sans filtre de date). Répond à "combien ai-je réellement en poche",
+// indépendamment du fait que "Jour" redémarre à zéro chaque matin.
+function calculerSoldeCumule() {
+  const ca = commandesValidees.reduce((a, l) => a + l.montant, 0);
+  const cout = depenses.reduce((a, d) => a + d.montant, 0);
+  const chargesHorsEpargne = charges.filter((c) => c.type !== 'Épargne').reduce((a, c) => a + c.montant, 0);
+  return ca - cout - chargesHorsEpargne;
 }
 
 // ---------------- TABLEAU DE BORD ----------------
@@ -460,6 +506,7 @@ function renderDashboard() {
   document.getElementById('kpi-marge').textContent = margeBrute + ' FCFA';
   document.getElementById('kpi-charges').textContent = '−' + chargesHorsEpargne + ' FCFA';
   document.getElementById('kpi-benefice').textContent = beneficeNet + ' FCFA';
+  document.getElementById('kpi-solde-cumule').textContent = calculerSoldeCumule() + ' FCFA';
   document.getElementById('epargne-note').textContent = 'Épargne à provisionner sur la période : ' + epargne + ' FCFA — non déduite du bénéfice.';
   document.getElementById('epargne-totale-note').textContent = 'Épargne totale accumulée : ' + calculerEpargneTotale() + ' FCFA';
 
