@@ -460,14 +460,14 @@ function calculerEpargneTotale() {
   return charges.filter((c) => c.type === 'Épargne').reduce((a, c) => a + c.montant, 0);
 }
 
-// Solde cumulé depuis le début (toutes ventes − toutes dépenses − toutes charges
-// hors épargne, sans filtre de date). Répond à "combien ai-je réellement en poche",
+// Solde cumulé depuis le début (toutes ventes − toutes dépenses − toutes charges,
+// épargne comprise, sans filtre de date). Répond à "combien ai-je réellement en poche",
 // indépendamment du fait que "Jour" redémarre à zéro chaque matin.
 function calculerSoldeCumule() {
   const ca = commandesValidees.reduce((a, l) => a + l.montant, 0);
   const cout = depenses.reduce((a, d) => a + d.montant, 0);
-  const chargesHorsEpargne = charges.filter((c) => c.type !== 'Épargne').reduce((a, c) => a + c.montant, 0);
-  return ca - cout - chargesHorsEpargne;
+  const chargesTotal = charges.reduce((a, c) => a + c.montant, 0);
+  return ca - cout - chargesTotal;
 }
 
 // ---------------- TABLEAU DE BORD ----------------
@@ -497,17 +497,17 @@ function renderDashboard() {
   const coutTotal = depensesFiltrees.reduce((a, d) => a + d.montant, 0);
 
   const margeBrute = ca - coutTotal;
-  const chargesHorsEpargne = chargesFiltrees.filter((c) => c.type !== 'Épargne').reduce((a, c) => a + c.montant, 0);
+  const chargesTotal = chargesFiltrees.reduce((a, c) => a + c.montant, 0);
   const epargne = chargesFiltrees.filter((c) => c.type === 'Épargne').reduce((a, c) => a + c.montant, 0);
-  const beneficeNet = margeBrute - chargesHorsEpargne;
+  const beneficeNet = margeBrute - chargesTotal;
 
   document.getElementById('kpi-ca').textContent = ca + ' FCFA';
   document.getElementById('kpi-cout').textContent = '−' + coutTotal + ' FCFA';
   document.getElementById('kpi-marge').textContent = margeBrute + ' FCFA';
-  document.getElementById('kpi-charges').textContent = '−' + chargesHorsEpargne + ' FCFA';
+  document.getElementById('kpi-charges').textContent = '−' + chargesTotal + ' FCFA';
   document.getElementById('kpi-benefice').textContent = beneficeNet + ' FCFA';
   document.getElementById('kpi-solde-cumule').textContent = calculerSoldeCumule() + ' FCFA';
-  document.getElementById('epargne-note').textContent = 'Épargne à provisionner sur la période : ' + epargne + ' FCFA — non déduite du bénéfice.';
+  document.getElementById('epargne-note').textContent = 'Dont épargne sur la période : ' + epargne + ' FCFA — déjà déduite du bénéfice ci-dessus.';
   document.getElementById('epargne-totale-note').textContent = 'Épargne totale accumulée : ' + calculerEpargneTotale() + ' FCFA';
 
   // Barres : chiffre d'affaires par produit uniquement (pas de coût attribué)
@@ -531,7 +531,7 @@ function calculerAgregats(lignesCmd, lignesDep, lignesChg) {
   const ca = lignesCmd.reduce((a, l) => a + l.montant, 0);
   const cout = lignesDep.reduce((a, d) => a + d.montant, 0);
   const marge = ca - cout;
-  const chargesTotal = lignesChg.filter((c) => c.type !== 'Épargne').reduce((a, c) => a + c.montant, 0);
+  const chargesTotal = lignesChg.reduce((a, c) => a + c.montant, 0);
   const benefice = marge - chargesTotal;
   return { ca, cout, marge, charges: chargesTotal, benefice };
 }
