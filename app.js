@@ -576,6 +576,14 @@ function renderBilansScreen() {
         <div><div class="label">Marge brute</div>${b.marge} FCFA</div>
         <div><div class="label">Charges fixes</div>−${b.charges} FCFA</div>
       </div>
+      ${b.detailDepenses && b.detailDepenses.length ? `
+        <div class="bilan-detail-title">Dépenses (${b.detailDepenses.length})</div>
+        ${b.detailDepenses.map((d) => `<div class="line"><span>${d.libelle}</span><span>−${d.montant} FCFA</span></div>`).join('')}
+      ` : ''}
+      ${b.detailCharges && b.detailCharges.length ? `
+        <div class="bilan-detail-title">Charges (${b.detailCharges.length})</div>
+        ${b.detailCharges.map((c) => `<div class="line"><span>${c.libelle}</span><span>−${c.montant} FCFA</span></div>`).join('')}
+      ` : ''}
       <div class="bilan-benefice">Bénéfice net : ${b.benefice} FCFA</div>
     </div>
   `).join('');
@@ -595,6 +603,8 @@ async function genererBilanSnapshot(type, libelle, debut, fin, genereEnRetard) {
     type,
     libelle,
     ...agg,
+    detailDepenses: lignesDep.map((d) => ({ libelle: d.libelle, montant: d.montant })),
+    detailCharges: lignesChg.map((c) => ({ libelle: c.libelle || c.type, montant: c.montant })),
     genere_en_retard: genereEnRetard ? 1 : 0,
     date_generation: new Date().toISOString(),
   };
@@ -617,6 +627,8 @@ async function genererBilanMensuelOfficiel(libelle, genereEnRetard) {
     type: 'mois',
     libelle,
     ...agg,
+    detailDepenses: depensesOuvertes.map((d) => ({ libelle: d.libelle, montant: d.montant })),
+    detailCharges: chargesOuvertes.map((c) => ({ libelle: c.libelle || c.type, montant: c.montant })),
     genere_en_retard: genereEnRetard ? 1 : 0,
     date_generation: new Date().toISOString(),
   };
