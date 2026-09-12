@@ -83,6 +83,9 @@ main{flex:1; padding:16px;}
 .status-tag{font-size:10px; padding:3px 8px; border-radius:6px; text-transform:uppercase; letter-spacing:0.5px; font-weight:700;}
 .status-tag.paye{background:rgba(122,154,90,0.2); color:var(--haricot);}
 .status-tag.du{background:rgba(193,62,44,0.2); color:var(--chili);}
+.jour-header{display:flex; justify-content:space-between; align-items:baseline; margin:16px 0 8px; font-size:12px; text-transform:capitalize; color:var(--text); font-weight:600;}
+.jour-header:first-child{margin-top:0;}
+.jour-header .jour-total{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--chili); font-weight:700; text-transform:none;}
 
 .kpi-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:6px;}
 .kpi{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px;}

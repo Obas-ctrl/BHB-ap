@@ -351,21 +351,39 @@ async function ajouterDepense() {
   showToast('Dépense enregistrée');
 }
 
+// Regroupe une liste d'entrées par date calendaire (plus récent en premier),
+// en conservant l'ordre chronologique décroissant à l'intérieur de chaque jour.
+function grouperParJour(entrees) {
+  const groupes = {};
+  const ordre = [];
+  entrees.slice().reverse().forEach((e) => {
+    const cle = new Date(e.date).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    if (!groupes[cle]) { groupes[cle] = []; ordre.push(cle); }
+    groupes[cle].push(e);
+  });
+  return ordre.map((cle) => ({ libelleJour: cle, items: groupes[cle] }));
+}
+
 function renderDepensesList() {
   const list = document.getElementById('depenses-list');
   if (depenses.length === 0) { list.innerHTML = '<div class="ticket empty" style="border:none; background:none;">Aucune dépense enregistrée</div>'; return; }
-  list.innerHTML = depenses.slice().reverse().map((d) => {
-    const noms = d.produits.map((pid) => produits.find((p) => p.id === pid)?.nom || '?').join(', ');
-    const lockCls = d.periode_cloturee ? 'locked' : '';
-    const lockIcon = d.periode_cloturee ? '<span class="lock-icon">🔒</span>' : '';
-    const suppr = d.periode_cloturee ? '' : `<span class="delete-btn" onclick="supprimerDepense('${d.id}')">🗑</span>`;
-    return `<div class="list-item ${lockCls}">
-      <div><div class="li-name">${lockIcon}${d.libelle}</div><div class="li-meta">${noms}</div></div>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <div class="li-amount chili">−${d.montant}</div>
-        ${suppr}
-      </div>
-    </div>`;
+
+  list.innerHTML = grouperParJour(depenses).map((groupe) => {
+    const totalJour = groupe.items.reduce((a, d) => a + d.montant, 0);
+    const lignesHtml = groupe.items.map((d) => {
+      const noms = d.produits.map((pid) => produits.find((p) => p.id === pid)?.nom || '?').join(', ');
+      const lockCls = d.periode_cloturee ? 'locked' : '';
+      const lockIcon = d.periode_cloturee ? '<span class="lock-icon">🔒</span>' : '';
+      const suppr = d.periode_cloturee ? '' : `<span class="delete-btn" onclick="supprimerDepense('${d.id}')">🗑</span>`;
+      return `<div class="list-item ${lockCls}">
+        <div><div class="li-name">${lockIcon}${d.libelle}</div><div class="li-meta">${noms}</div></div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="li-amount chili">−${d.montant}</div>
+          ${suppr}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="jour-header"><span>${groupe.libelleJour}</span><span class="jour-total">−${totalJour} FCFA</span></div>${lignesHtml}`;
   }).join('');
 }
 
@@ -412,18 +430,23 @@ async function toggleChargeStatut(id) {
 function renderChargesList() {
   const list = document.getElementById('charges-list');
   if (charges.length === 0) { list.innerHTML = '<div class="ticket empty" style="border:none; background:none;">Aucun achat enregistré</div>'; return; }
-  list.innerHTML = charges.slice().reverse().map((c) => {
-    const lockCls = c.periode_cloturee ? 'locked' : '';
-    const lockIcon = c.periode_cloturee ? '<span class="lock-icon">🔒</span>' : '';
-    const libelle = c.libelle || c.type; // repli pour les anciennes charges sans libellé
-    const suppr = c.periode_cloturee ? '' : `<span class="delete-btn" onclick="supprimerCharge(event, '${c.id}')">🗑</span>`;
-    return `<div class="list-item ${lockCls}" onclick="toggleChargeStatut('${c.id}')" style="cursor:${c.periode_cloturee ? 'default' : 'pointer'};">
-      <div><div class="li-name">${lockIcon}${libelle}</div><div class="li-meta">${c.type} · <span class="status-tag ${c.statut}">${c.statut === 'paye' ? 'Payé' : 'Dû'}</span></div></div>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <div class="li-amount chili">${c.montant} FCFA</div>
-        ${suppr}
-      </div>
-    </div>`;
+
+  list.innerHTML = grouperParJour(charges).map((groupe) => {
+    const totalJour = groupe.items.reduce((a, c) => a + c.montant, 0);
+    const lignesHtml = groupe.items.map((c) => {
+      const lockCls = c.periode_cloturee ? 'locked' : '';
+      const lockIcon = c.periode_cloturee ? '<span class="lock-icon">🔒</span>' : '';
+      const libelle = c.libelle || c.type; // repli pour les anciennes charges sans libellé
+      const suppr = c.periode_cloturee ? '' : `<span class="delete-btn" onclick="supprimerCharge(event, '${c.id}')">🗑</span>`;
+      return `<div class="list-item ${lockCls}" onclick="toggleChargeStatut('${c.id}')" style="cursor:${c.periode_cloturee ? 'default' : 'pointer'};">
+        <div><div class="li-name">${lockIcon}${libelle}</div><div class="li-meta">${c.type} · <span class="status-tag ${c.statut}">${c.statut === 'paye' ? 'Payé' : 'Dû'}</span></div></div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="li-amount chili">${c.montant} FCFA</div>
+          ${suppr}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="jour-header"><span>${groupe.libelleJour}</span><span class="jour-total">−${totalJour} FCFA</span></div>${lignesHtml}`;
   }).join('');
 }
 
